@@ -1,33 +1,33 @@
 version: "3"
 
 services:
-  traefik:
-    image: "traefik:v2.2"
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-    labels:
-      # enable traefik
-      - "traefik.enable=true"
-      # global redirect to https for production only
-      - "${HTTPS_REDIRECT_RULE_LABEL}"
-      - "${HTTPS_REDIRECT_ENTRYPOINT_LABEL}"
-      - "${HTTPS_REDIRECT_MIDDLEWARE_LABEL}"
-      # middleware redirect for production only
-      - "${HTTPS_USE_REDIRECT_MIDDLEWARE_LABEL}"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - cert-vol:/letsencrypt
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    userns_mode: "host"
+  # traefik:
+    # image: "traefik:v2.2"
+    # command:
+      # - "--providers.docker=true"
+      # - "--providers.docker.exposedbydefault=false"
+      # - "--entrypoints.web.address=:80"
+      # - "--entrypoints.websecure.address=:443"
+      # - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      # - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      # - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
+      # - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    # labels:
+      # # enable traefik
+      # - "traefik.enable=true"
+      # # global redirect to https for production only
+      # - "${HTTPS_REDIRECT_RULE_LABEL}"
+      # - "${HTTPS_REDIRECT_ENTRYPOINT_LABEL}"
+      # - "${HTTPS_REDIRECT_MIDDLEWARE_LABEL}"
+      # # middleware redirect for production only
+      # - "${HTTPS_USE_REDIRECT_MIDDLEWARE_LABEL}"
+    # ports:
+      # - "80:80"
+      # - "443:443"
+    # volumes:
+      # - cert-vol:/letsencrypt
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    # userns_mode: "host"
 
   erpnext-nginx:
     image: frappe/erpnext-nginx:${ERPNEXT_VERSION}
@@ -37,17 +37,22 @@ services:
       - FRAPPE_PY_PORT=8000
       - FRAPPE_SOCKETIO=frappe-socketio
       - SOCKETIO_PORT=9000
-      - SKIP_NGINX_TEMPLATE_GENERATION=${SKIP_NGINX_TEMPLATE_GENERATION}
+    #  - SKIP_NGINX_TEMPLATE_GENERATION=${SKIP_NGINX_TEMPLATE_GENERATION}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.erpnext-nginx.rule=Host(${SITES})"
       - "${ENTRYPOINT_LABEL}"
       - "${CERT_RESOLVER_LABEL}"
       - "traefik.http.services.erpnext-nginx.loadbalancer.server.port=8080"
+    networks:
+      - frappe-network
+      - nginxproxymanager_default
     volumes:
       - sites-vol:/var/www/html/sites:rw
       - assets-vol:/assets:rw
-
+    ports:
+      - 8088:8080
+      
   erpnext-python:
     image: frappe/erpnext-worker:${ERPNEXT_VERSION}
     restart: on-failure
@@ -59,6 +64,8 @@ services:
       - SOCKETIO_PORT=9000
       - AUTO_MIGRATE=1
       - WORKER_CLASS=${WORKER_CLASS}
+    networks:
+      - frappe-network      
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - assets-vol:/home/frappe/frappe-bench/sites/assets:rw
@@ -68,6 +75,8 @@ services:
     restart: on-failure
     depends_on:
       - redis-socketio
+    networks:
+      - frappe-network      
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - logs-vol:/home/frappe/frappe-bench/logs:rw
@@ -79,6 +88,8 @@ services:
     depends_on:
       - redis-queue
       - redis-cache
+    networks:
+      - frappe-network  
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - logs-vol:/home/frappe/frappe-bench/logs:rw
@@ -92,6 +103,8 @@ services:
     depends_on:
       - redis-queue
       - redis-cache
+    networks:
+      - frappe-network       
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - logs-vol:/home/frappe/frappe-bench/logs:rw
@@ -105,6 +118,8 @@ services:
     depends_on:
       - redis-queue
       - redis-cache
+    networks:
+      - frappe-network 
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
 
@@ -115,6 +130,8 @@ services:
     depends_on:
       - redis-queue
       - redis-cache
+    networks:
+      - frappe-network 
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - logs-vol:/home/frappe/frappe-bench/logs:rw
@@ -122,11 +139,15 @@ services:
   redis-cache:
     image: redis:latest
     restart: on-failure
+    networks:
+      - frappe-network     
     volumes:
       - redis-cache-vol:/data
 
   redis-queue:
     image: redis:latest
+    networks:
+      - frappe-network 
     restart: on-failure
     volumes:
       - redis-queue-vol:/data
@@ -134,6 +155,8 @@ services:
   redis-socketio:
     image: redis:latest
     restart: on-failure
+    networks:
+      - frappe-network 
     volumes:
       - redis-socketio-vol:/data
 
@@ -150,6 +173,8 @@ services:
       # Sometimes db initialization takes longer than 10 seconds and site-creator goes away.
       # Frappe doesn't use CONVERT_TZ() function that requires time zone info, so we can just skip it.
       - MYSQL_INITDB_SKIP_TZINFO=1
+    networks:
+      - frappe-network       
     volumes:
       - mariadb-vol:/var/lib/mysql
 
@@ -165,6 +190,8 @@ services:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - INSTALL_APPS=${INSTALL_APPS}
+    networks:
+      - frappe-network 
     volumes:
       - sites-vol:/home/frappe/frappe-bench/sites:rw
       - logs-vol:/home/frappe/frappe-bench/logs:rw
@@ -178,3 +205,11 @@ volumes:
   sites-vol:
   cert-vol:
   logs-vol:
+
+networks:
+  frappe-network:
+    external: 
+      name: frappe-network
+  nginxproxymanager_default:
+    external: 
+      name: nginxproxymanager_default
